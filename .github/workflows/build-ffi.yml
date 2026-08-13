@@ -283,7 +283,7 @@ jobs:
             cargo build --release --target ${{ matrix.target }} --package easytier-ffi && exit 0
             echo "Build attempt $i failed, cleaning and retrying in 30s..."
             cargo clean -p easytier 2>/dev/null || true
-            sleep 10
+            sleep 30
           done
           echo "Build failed after 5 attempts"
           exit 1
@@ -297,7 +297,7 @@ jobs:
             cargo ndk -t ${{ matrix.ndk_target }} build --release && exit 0
             echo "Build attempt $i failed, cleaning and retrying in 30s..."
             cargo clean -p easytier 2>/dev/null || true
-            sleep 10
+            sleep 30
           done
           echo "Build failed after 5 attempts"
           exit 1

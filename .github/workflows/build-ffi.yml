@@ -253,8 +253,8 @@ jobs:
           cache: true
           rustflags: ""
 
-      - name: Enable mold linker (Linux)
-        if: runner.os == 'Linux'
+      - name: Enable mold linker (Linux native)
+        if: runner.os == 'Linux' && matrix.cross_linker == ''
         run: echo "RUSTFLAGS=-C link-arg=-fuse-ld=mold" >> "$GITHUB_ENV"
 
       - name: Clone EasyTier source

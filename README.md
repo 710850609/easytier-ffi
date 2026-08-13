@@ -25,7 +25,7 @@ GitHub Actions 每天 UTC 0:00 自动检查 [EasyTier Releases](https://github.c
 
 ### 下载产物
 
-构建完成后，在对应 workflow run 的 **Artifacts** 区域下载各平台 `.tar.gz` 包。
+构建完成后，可在 [Releases](https://github.com/easytier/easytier-ffi/releases) 页面下载对应版本的各平台 `.tar.gz` 包，Release 版本号与 EasyTier 上游一致。
 
 ## 工作原理
 
@@ -36,10 +36,10 @@ flowchart LR
     B -->|新版本| D[克隆 EasyTier 源码]
     D --> E[多平台并行构建]
     E --> F[打包上传 Artifact]
-    F --> G[标记已构建版本]
+    F --> G[创建 GitHub Release]
 ```
 
-1. **版本检查**：通过 GitHub API 获取 EasyTier 最新 Release tag，与本仓库的 `built-*` tag 比对
+1. **版本检查**：通过 GitHub API 获取 EasyTier 最新 Release tag，与本仓库已有 tag 比对
 2. **并行构建**：13 个平台在各自 runner 上并行编译 Rust FFI cdylib
 3. **产物归档**：每个平台独立打包为 `.tar.gz`，上传为 GitHub Artifact
-4. **版本标记**：全部构建成功后创建 `built-{version}` tag，避免重复构建
+4. **发布 Release**：全部构建成功后创建 GitHub Release，tag 与 EasyTier 上游一致，包含所有平台产物

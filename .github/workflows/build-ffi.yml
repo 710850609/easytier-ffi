@@ -63,7 +63,7 @@ jobs:
 
           echo "Latest EasyTier release: $LATEST_TAG"
 
-          if git rev-parse "refs/tags/built-${LATEST_TAG}" >/dev/null 2>&1; then
+          if git rev-parse "refs/tags/${LATEST_TAG}" >/dev/null 2>&1; then
             echo "Version $LATEST_TAG already built, skipping"
             echo "should_build=false" >> "$GITHUB_OUTPUT"
           else
@@ -245,7 +245,11 @@ jobs:
           BUILD_DIR="target/${{ matrix.target }}/release"
           mkdir -p "$OUT_DIR"
           cp "$BUILD_DIR/${{ matrix.ffi_lib }}" "$OUT_DIR/"
-          sha256sum "$OUT_DIR/${{ matrix.ffi_lib }}" | awk '{print $1}' > "$OUT_DIR/${{ matrix.ffi_lib }}.sha256"
+          if command -v sha256sum &>/dev/null; then
+            sha256sum "$OUT_DIR/${{ matrix.ffi_lib }}" | awk '{print $1}' > "$OUT_DIR/${{ matrix.ffi_lib }}.sha256"
+          else
+            shasum -a 256 "$OUT_DIR/${{ matrix.ffi_lib }}" | awk '{print $1}' > "$OUT_DIR/${{ matrix.ffi_lib }}.sha256"
+          fi
           {
             echo "source_repo=$EASYTIER_REPO"
             echo "source_ref=${{ needs.check-version.outputs.source_ref }}"
@@ -263,26 +267,28 @@ jobs:
           path: artifacts/easytier-ffi-${{ matrix.artifact_name }}.tar.gz
           if-no-files-found: error
 
-  tag-version:
-    name: Tag built version
+  release:
+    name: Create Release
     needs: [check-version, build-ffi]
     if: success() && needs.check-version.outputs.should_build == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
         with:
-          fetch-depth: 0
-          fetch-tags: true
+          path: artifacts
+          pattern: easytier-ffi-*
 
-      - name: Create and push tag
+      - name: Flatten artifacts
         run: |
-          TAG="built-${{ needs.check-version.outputs.source_ref }}"
-          if git rev-parse "refs/tags/$TAG" >/dev/null 2>&1; then
-            echo "Tag $TAG already exists"
-          else
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
-            git tag "$TAG"
-            git push origin "$TAG"
-            echo "Created tag: $TAG"
-          fi
+          find artifacts -mindepth 2 -name "*.tar.gz" -exec mv {} artifacts/ \;
+          find artifacts -mindepth 1 -type d -empty -delete
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.check-version.outputs.source_ref }}
+          name: ${{ needs.check-version.outputs.source_ref }}
+          files: artifacts/*.tar.gz
+          generate_release_notes: true

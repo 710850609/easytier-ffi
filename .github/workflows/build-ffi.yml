@@ -215,9 +215,7 @@ jobs:
 
       - name: Install cargo-ndk (Android)
         if: matrix.ndk_target != ''
-        run: |
-          cargo install cargo-binstall
-          cargo binstall -y cargo-ndk
+        run: cargo install cargo-ndk
 
       - name: Setup protoc
         uses: arduino/setup-protoc@v3

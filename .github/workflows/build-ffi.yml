@@ -79,7 +79,7 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     strategy:
-      fail-fast: false
+      fail-fast: true
       matrix:
         include:
           - artifact_name: windows-amd64

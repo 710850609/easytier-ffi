@@ -215,7 +215,9 @@ jobs:
 
       - name: Install cargo-ndk (Android)
         if: matrix.ndk_target != ''
-        run: cargo install cargo-ndk
+        run: |
+          cargo install cargo-binstall
+          cargo binstall -y cargo-ndk
 
       - name: Setup protoc
         uses: arduino/setup-protoc@v3
@@ -223,13 +225,27 @@ jobs:
           version: "35.1"
           repo-token: ${{ github.token }}
 
+      - name: Setup sccache
+        uses: taiki-e/install-action@v2
+        with:
+          tool: sccache
+
+      - name: Configure sccache
+        run: |
+          echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
+          echo "SCCACHE_GHA_ENABLED=true" >> "$GITHUB_ENV"
+
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
           target: ${{ matrix.target }}
-          cache: false
+          cache: true
           rustflags: ""
+
+      - name: Enable mold linker (Linux)
+        if: runner.os == 'Linux'
+        run: echo "RUSTFLAGS=-C link-arg=-fuse-ld=mold" >> "$GITHUB_ENV"
 
       - name: Clone EasyTier source
         run: |
@@ -255,14 +271,26 @@ jobs:
         working-directory: ${{ env.EASYTIER_DIR }}
         if: matrix.ndk_target == ''
         run: |
-          cargo build --release --target ${{ matrix.target }} --package easytier-ffi
+          for i in 1 2 3; do
+            cargo build --release --target ${{ matrix.target }} --package easytier-ffi && exit 0
+            echo "Build attempt $i failed, retrying in 10s..."
+            sleep 10
+          done
+          echo "Build failed after 3 attempts"
+          exit 1
 
       - name: Build Android FFI
         working-directory: ${{ env.EASYTIER_DIR }}
         if: matrix.ndk_target != ''
         run: |
           cd easytier-contrib/easytier-ffi
-          cargo ndk -t ${{ matrix.ndk_target }} build --release
+          for i in 1 2 3; do
+            cargo ndk -t ${{ matrix.ndk_target }} build --release && exit 0
+            echo "Build attempt $i failed, retrying in 10s..."
+            sleep 10
+          done
+          echo "Build failed after 3 attempts"
+          exit 1
 
       - name: Package artifact
         working-directory: ${{ env.EASYTIER_DIR }}

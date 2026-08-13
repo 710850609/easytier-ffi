@@ -83,27 +83,37 @@ jobs:
       matrix:
         include:
           - artifact_name: windows-amd64
+            platform: windows
+            arch: x86_64
             os: windows-latest
             target: x86_64-pc-windows-msvc
             ffi_lib: easytier_ffi.dll
 
           - artifact_name: windows-x86
+            platform: windows
+            arch: x86
             os: windows-latest
             target: i686-pc-windows-msvc
             ffi_lib: easytier_ffi.dll
 
           - artifact_name: linux-amd64
+            platform: linux
+            arch: x86_64
             os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
             ffi_lib: libeasytier_ffi.so
 
           - artifact_name: linux-x86
+            platform: linux
+            arch: x86
             os: ubuntu-22.04
             target: i686-unknown-linux-gnu
             cross_packages: gcc-multilib
             ffi_lib: libeasytier_ffi.so
 
           - artifact_name: linux-armv7
+            platform: linux
+            arch: armv7
             os: ubuntu-22.04
             target: armv7-unknown-linux-gnueabihf
             cross_packages: gcc-arm-linux-gnueabihf
@@ -111,11 +121,15 @@ jobs:
             ffi_lib: libeasytier_ffi.so
 
           - artifact_name: linux-aarch64
+            platform: linux
+            arch: aarch64
             os: ubuntu-22.04-arm
             target: aarch64-unknown-linux-gnu
             ffi_lib: libeasytier_ffi.so
 
           - artifact_name: linux-riscv64
+            platform: linux
+            arch: riscv64
             os: ubuntu-22.04
             target: riscv64gc-unknown-linux-gnu
             cross_packages: gcc-riscv64-linux-gnu
@@ -123,34 +137,46 @@ jobs:
             ffi_lib: libeasytier_ffi.so
 
           - artifact_name: macos-amd64
+            platform: macos
+            arch: x86_64
             os: macos-14
             target: x86_64-apple-darwin
             ffi_lib: libeasytier_ffi.dylib
 
           - artifact_name: macos-aarch64
+            platform: macos
+            arch: aarch64
             os: macos-14
             target: aarch64-apple-darwin
             ffi_lib: libeasytier_ffi.dylib
 
           - artifact_name: android-aarch64
+            platform: android
+            arch: aarch64
             os: ubuntu-22.04
             target: aarch64-linux-android
             ndk_target: arm64-v8a
             ffi_lib: libeasytier_ffi.so
 
           - artifact_name: android-armv7
+            platform: android
+            arch: armv7
             os: ubuntu-22.04
             target: armv7-linux-androideabi
             ndk_target: armeabi-v7a
             ffi_lib: libeasytier_ffi.so
 
           - artifact_name: android-x86
+            platform: android
+            arch: x86
             os: ubuntu-22.04
             target: i686-linux-android
             ndk_target: x86
             ffi_lib: libeasytier_ffi.so
 
           - artifact_name: android-x86_64
+            platform: android
+            arch: x86_64
             os: ubuntu-22.04
             target: x86_64-linux-android
             ndk_target: x86_64
@@ -241,7 +267,8 @@ jobs:
       - name: Package artifact
         working-directory: ${{ env.EASYTIER_DIR }}
         run: |
-          OUT_DIR="../artifacts/easytier-ffi-${{ matrix.artifact_name }}"
+          ARTIFACT_NAME="easytier-ffi-${{ matrix.platform }}-${{ matrix.arch }}-${{ needs.check-version.outputs.source_ref }}"
+          OUT_DIR="../artifacts/$ARTIFACT_NAME"
           BUILD_DIR="target/${{ matrix.target }}/release"
           mkdir -p "$OUT_DIR"
           cp "$BUILD_DIR/${{ matrix.ffi_lib }}" "$OUT_DIR/"
@@ -258,19 +285,19 @@ jobs:
             echo "target=${{ matrix.target }}"
           } > "$OUT_DIR/BUILD_INFO.txt"
           cd ../artifacts
-          tar -czf "easytier-ffi-${{ matrix.artifact_name }}.tar.gz" "easytier-ffi-${{ matrix.artifact_name }}"
+          tar -czf "${ARTIFACT_NAME}.tar.gz" "$ARTIFACT_NAME"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: easytier-ffi-${{ matrix.artifact_name }}
-          path: artifacts/easytier-ffi-${{ matrix.artifact_name }}.tar.gz
+          name: easytier-ffi-${{ matrix.platform }}-${{ matrix.arch }}-${{ needs.check-version.outputs.source_ref }}
+          path: artifacts/easytier-ffi-${{ matrix.platform }}-${{ matrix.arch }}-${{ needs.check-version.outputs.source_ref }}.tar.gz
           if-no-files-found: error
 
   release:
     name: Create Release
     needs: [check-version, build-ffi]
-    if: success() && needs.check-version.outputs.should_build == 'true'
+    if: success() && needs.check-version.outputs.should_build == 'true' && startsWith(needs.check-version.outputs.source_ref, 'v')
     runs-on: ubuntu-latest
     permissions:
       contents: write

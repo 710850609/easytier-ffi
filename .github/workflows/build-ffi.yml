@@ -232,8 +232,18 @@ jobs:
 
       - name: Configure sccache
         run: |
+          echo "SCCACHE_DIR=${{ runner.temp }}/sccache" >> "$GITHUB_ENV"
           echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
-          echo "SCCACHE_GHA_ENABLED=true" >> "$GITHUB_ENV"
+          echo "SCCACHE_CACHE_SIZE=1G" >> "$GITHUB_ENV"
+
+      - name: Restore sccache
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/sccache
+          key: sccache-${{ runner.os }}-${{ matrix.target }}-${{ github.ref_name }}
+          restore-keys: |
+            sccache-${{ runner.os }}-${{ matrix.target }}-
+            sccache-${{ runner.os }}-
 
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -271,12 +281,13 @@ jobs:
         working-directory: ${{ env.EASYTIER_DIR }}
         if: matrix.ndk_target == ''
         run: |
-          for i in 1 2 3; do
+          for i in 1 2 3 4 5; do
             cargo build --release --target ${{ matrix.target }} --package easytier-ffi && exit 0
-            echo "Build attempt $i failed, retrying in 10s..."
+            echo "Build attempt $i failed, cleaning and retrying in 30s..."
+            cargo clean -p easytier 2>/dev/null || true
             sleep 10
           done
-          echo "Build failed after 3 attempts"
+          echo "Build failed after 5 attempts"
           exit 1
 
       - name: Build Android FFI
@@ -284,12 +295,13 @@ jobs:
         if: matrix.ndk_target != ''
         run: |
           cd easytier-contrib/easytier-ffi
-          for i in 1 2 3; do
+          for i in 1 2 3 4 5; do
             cargo ndk -t ${{ matrix.ndk_target }} build --release && exit 0
-            echo "Build attempt $i failed, retrying in 10s..."
+            echo "Build attempt $i failed, cleaning and retrying in 30s..."
+            cargo clean -p easytier 2>/dev/null || true
             sleep 10
           done
-          echo "Build failed after 3 attempts"
+          echo "Build failed after 5 attempts"
           exit 1
 
       - name: Package artifact

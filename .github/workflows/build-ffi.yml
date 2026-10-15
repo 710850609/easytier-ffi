@@ -36,6 +36,7 @@ jobs:
     outputs:
       source_ref: ${{ steps.resolve.outputs.source_ref }}
       should_build: ${{ steps.resolve.outputs.should_build }}
+      is_nightly: ${{ steps.resolve.outputs.is_nightly }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -48,28 +49,57 @@ jobs:
           if [ -n "${{ inputs.source_ref }}" ]; then
             echo "source_ref=${{ inputs.source_ref }}" >> "$GITHUB_OUTPUT"
             echo "should_build=true" >> "$GITHUB_OUTPUT"
+            echo "is_nightly=false" >> "$GITHUB_OUTPUT"
             echo "Using manual ref: ${{ inputs.source_ref }}"
             exit 0
           fi
 
-          LATEST_TAG=$(curl -sL -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-            https://api.github.com/repos/easytier/easytier/releases/latest | jq -r .tag_name)
+          # Get latest release including prereleases
+          LATEST_RELEASE=$(curl -sL -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/easytier/easytier/releases?per_page=1")
 
-          if [ -z "$LATEST_TAG" ] || [ "$LATEST_TAG" = "null" ]; then
-            echo "Failed to get latest release tag"
+          TAG_NAME=$(echo "$LATEST_RELEASE" | jq -r '.[0].tag_name')
+          IS_PRERELEASE=$(echo "$LATEST_RELEASE" | jq -r '.[0].prerelease')
+          PUBLISHED_AT=$(echo "$LATEST_RELEASE" | jq -r '.[0].published_at')
+
+          if [ -z "$TAG_NAME" ] || [ "$TAG_NAME" = "null" ]; then
+            echo "Failed to get latest release"
             echo "should_build=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          echo "Latest EasyTier release: $LATEST_TAG"
+          echo "Latest EasyTier release: $TAG_NAME (prerelease=$IS_PRERELEASE, published=$PUBLISHED_AT)"
 
-          if git rev-parse "refs/tags/${LATEST_TAG}" >/dev/null 2>&1; then
-            echo "Version $LATEST_TAG already built, skipping"
+          # Check if it's a nightly prerelease (tag contains "nightly")
+          if [ "$IS_PRERELEASE" = "true" ]; then
+            if echo "$TAG_NAME" | grep -qi "nightly"; then
+              TODAY=$(date -u +"%Y-%m-%d")
+              PUB_DATE=$(echo "$PUBLISHED_AT" | cut -d'T' -f1)
+              if [ "$TODAY" = "$PUB_DATE" ]; then
+                echo "Nightly release $TAG_NAME published today, triggering build"
+                echo "source_ref=$TAG_NAME" >> "$GITHUB_OUTPUT"
+                echo "should_build=true" >> "$GITHUB_OUTPUT"
+                echo "is_nightly=true" >> "$GITHUB_OUTPUT"
+              else
+                echo "Nightly release $TAG_NAME was published $PUB_DATE (not today), skipping"
+                echo "should_build=false" >> "$GITHUB_OUTPUT"
+              fi
+            else
+              echo "Prerelease $TAG_NAME is not a nightly, skipping"
+              echo "should_build=false" >> "$GITHUB_OUTPUT"
+            fi
+            exit 0
+          fi
+
+          # For stable releases, check if already built
+          if git rev-parse "refs/tags/${TAG_NAME}" >/dev/null 2>&1; then
+            echo "Version $TAG_NAME already built, skipping"
             echo "should_build=false" >> "$GITHUB_OUTPUT"
           else
-            echo "New version detected: $LATEST_TAG"
-            echo "source_ref=$LATEST_TAG" >> "$GITHUB_OUTPUT"
+            echo "New version detected: $TAG_NAME"
+            echo "source_ref=$TAG_NAME" >> "$GITHUB_OUTPUT"
             echo "should_build=true" >> "$GITHUB_OUTPUT"
+            echo "is_nightly=false" >> "$GITHUB_OUTPUT"
           fi
 
   build-ffi:
@@ -335,7 +365,7 @@ jobs:
   release:
     name: Create Release
     needs: [check-version, build-ffi]
-    if: success() && needs.check-version.outputs.should_build == 'true' && startsWith(needs.check-version.outputs.source_ref, 'v')
+    if: success() && needs.check-version.outputs.should_build == 'true' && (startsWith(needs.check-version.outputs.source_ref, 'v') || needs.check-version.outputs.is_nightly == 'true')
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -350,6 +380,12 @@ jobs:
           find artifacts -mindepth 2 -name "*.tar.gz" -exec mv {} artifacts/ \;
           find artifacts -mindepth 1 -type d -empty -delete
 
+      - name: Delete existing nightly release
+        if: needs.check-version.outputs.is_nightly == 'true'
+        run: gh release delete "${{ needs.check-version.outputs.source_ref }}" --yes --cleanup-tag 2>/dev/null || true
+        env:
+          GH_TOKEN: ${{ github.token }}
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
@@ -357,3 +393,4 @@ jobs:
           name: ${{ needs.check-version.outputs.source_ref }}
           files: artifacts/*.tar.gz
           generate_release_notes: true
+          prerelease: ${{ needs.check-version.outputs.is_nightly == 'true' }}

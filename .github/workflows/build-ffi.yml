@@ -37,6 +37,7 @@ jobs:
       source_ref: ${{ steps.resolve.outputs.source_ref }}
       should_build: ${{ steps.resolve.outputs.should_build }}
       is_nightly: ${{ steps.resolve.outputs.is_nightly }}
+      release_body: ${{ steps.resolve.outputs.release_body }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -50,6 +51,13 @@ jobs:
             echo "source_ref=${{ inputs.source_ref }}" >> "$GITHUB_OUTPUT"
             echo "should_build=true" >> "$GITHUB_OUTPUT"
             echo "is_nightly=false" >> "$GITHUB_OUTPUT"
+            MANUAL_BODY=$(curl -sL -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+              "https://api.github.com/repos/easytier/easytier/releases/tags/${{ inputs.source_ref }}" | jq -r '.body // ""')
+            {
+              echo "release_body<<RELEASE_BODY_EOF"
+              echo "$MANUAL_BODY"
+              echo "RELEASE_BODY_EOF"
+            } >> "$GITHUB_OUTPUT"
             echo "Using manual ref: ${{ inputs.source_ref }}"
             exit 0
           fi
@@ -60,7 +68,7 @@ jobs:
 
           TAG_NAME=$(echo "$LATEST_RELEASE" | jq -r '.[0].tag_name')
           IS_PRERELEASE=$(echo "$LATEST_RELEASE" | jq -r '.[0].prerelease')
-          PUBLISHED_AT=$(echo "$LATEST_RELEASE" | jq -r '.[0].published_at')
+          RELEASE_BODY=$(echo "$LATEST_RELEASE" | jq -r '.[0].body // ""')
 
           if [ -z "$TAG_NAME" ] || [ "$TAG_NAME" = "null" ]; then
             echo "Failed to get latest release"
@@ -68,26 +76,36 @@ jobs:
             exit 0
           fi
 
-          echo "Latest EasyTier release: $TAG_NAME (prerelease=$IS_PRERELEASE, published=$PUBLISHED_AT)"
+          echo "Latest EasyTier release: $TAG_NAME (prerelease=$IS_PRERELEASE)"
 
           # Check if it's a nightly prerelease (tag contains "nightly")
           if [ "$IS_PRERELEASE" = "true" ]; then
             if echo "$TAG_NAME" | grep -qi "nightly"; then
-              TODAY=$(date -u +"%Y-%m-%d")
-              PUB_DATE=$(echo "$PUBLISHED_AT" | cut -d'T' -f1)
-              if [ "$TODAY" = "$PUB_DATE" ]; then
-                echo "Nightly release $TAG_NAME published today, triggering build"
+              # Compare release body with existing release in this repo
+              EXISTING_BODY=$(gh release view "$TAG_NAME" --json body -q ".body" 2>/dev/null || echo "")
+              if [ -z "$EXISTING_BODY" ]; then
+                echo "No existing nightly release for $TAG_NAME, triggering build"
+                echo "source_ref=$TAG_NAME" >> "$GITHUB_OUTPUT"
+                echo "should_build=true" >> "$GITHUB_OUTPUT"
+                echo "is_nightly=true" >> "$GITHUB_OUTPUT"
+              elif [ "$RELEASE_BODY" != "$EXISTING_BODY" ]; then
+                echo "Nightly release body changed, triggering rebuild"
                 echo "source_ref=$TAG_NAME" >> "$GITHUB_OUTPUT"
                 echo "should_build=true" >> "$GITHUB_OUTPUT"
                 echo "is_nightly=true" >> "$GITHUB_OUTPUT"
               else
-                echo "Nightly release $TAG_NAME was published $PUB_DATE (not today), skipping"
+                echo "Nightly release body unchanged, skipping"
                 echo "should_build=false" >> "$GITHUB_OUTPUT"
               fi
             else
               echo "Prerelease $TAG_NAME is not a nightly, skipping"
               echo "should_build=false" >> "$GITHUB_OUTPUT"
             fi
+            {
+              echo "release_body<<RELEASE_BODY_EOF"
+              echo "$RELEASE_BODY"
+              echo "RELEASE_BODY_EOF"
+            } >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -101,6 +119,11 @@ jobs:
             echo "should_build=true" >> "$GITHUB_OUTPUT"
             echo "is_nightly=false" >> "$GITHUB_OUTPUT"
           fi
+          {
+            echo "release_body<<RELEASE_BODY_EOF"
+            echo "$RELEASE_BODY"
+            echo "RELEASE_BODY_EOF"
+          } >> "$GITHUB_OUTPUT"
 
   build-ffi:
     needs: check-version
@@ -391,6 +414,7 @@ jobs:
         with:
           tag_name: ${{ needs.check-version.outputs.source_ref }}
           name: ${{ needs.check-version.outputs.source_ref }}
+          body: ${{ needs.check-version.outputs.release_body }}
           files: artifacts/*.tar.gz
           generate_release_notes: true
           prerelease: ${{ needs.check-version.outputs.is_nightly == 'true' }}

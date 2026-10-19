@@ -2,7 +2,7 @@ name: Build EasyTier FFI Libraries
 
 on:
   schedule:
-    - cron: '0 0 * * *'
+    - cron: '30 22,0,2 * * *'
   workflow_dispatch:
     inputs:
       source_ref:

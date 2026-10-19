@@ -90,6 +90,14 @@ jobs:
                 echo "is_nightly=true" >> "$GITHUB_OUTPUT"
               elif [ "$RELEASE_BODY" != "$EXISTING_BODY" ]; then
                 echo "Nightly release body changed, triggering rebuild"
+                echo "=== Upstream body (first 500 chars) ==="
+                echo "$RELEASE_BODY" | head -c 500
+                echo ""
+                echo "=== Existing body (first 500 chars) ==="
+                echo "$EXISTING_BODY" | head -c 500
+                echo ""
+                echo "=== Diff ==="
+                diff <(echo "$RELEASE_BODY") <(echo "$EXISTING_BODY") || true
                 echo "source_ref=$TAG_NAME" >> "$GITHUB_OUTPUT"
                 echo "should_build=true" >> "$GITHUB_OUTPUT"
                 echo "is_nightly=true" >> "$GITHUB_OUTPUT"
@@ -416,5 +424,4 @@ jobs:
           name: ${{ needs.check-version.outputs.source_ref }}
           body: ${{ needs.check-version.outputs.release_body }}
           files: artifacts/*.tar.gz
-          generate_release_notes: true
           prerelease: ${{ needs.check-version.outputs.is_nightly == 'true' }}

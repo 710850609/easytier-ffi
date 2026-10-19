@@ -46,6 +46,8 @@ jobs:
 
       - name: Resolve source ref
         id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           if [ -n "${{ inputs.source_ref }}" ]; then
             echo "source_ref=${{ inputs.source_ref }}" >> "$GITHUB_OUTPUT"
@@ -382,7 +384,10 @@ jobs:
             echo "source_version=${{ steps.source-info.outputs.source_version }}"
             echo "source_commit=${{ steps.source-info.outputs.source_commit }}"
             echo "target=${{ matrix.target }}"
+            echo ""
+            echo "--- release_body ---"
           } > "$OUT_DIR/BUILD_INFO.txt"
+          printf '%s\n' "${{ needs.check-version.outputs.release_body }}" >> "$OUT_DIR/BUILD_INFO.txt"
           cd ../artifacts
           tar -czf "${ARTIFACT_NAME}.tar.gz" "$ARTIFACT_NAME"
 
